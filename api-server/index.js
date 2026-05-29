@@ -3,15 +3,36 @@ const {generateSlug} = require('random-word-slugs')
 const {ECSClient,RunTaskCommand}= require('@aws-sdk/client-ecs')
 const {PrismaClient} =  require('@prisma/client')
 const {z} = require('zod')
-
+const {createClient} = require('@clickhouse/client')
 const redis = require('ioredis')
 const {Server} = require('socket.io');
-
-
-//redis setup
-const subscriber = new redis(process.env.REDIS_URL)
-
+const {Kafka} = require("kafkajs")
+const {v4 : uuidv4 } = require('uuid')
+const fs= require("fs")
+const path= require("path")
 const io = new Server({cors: '*'})
+
+const kafka = new Kafka({
+    clientId: `api-server`,
+    broker: [], //kafka broker URl needed.
+    ssl: {
+        ca: [fs.readFileSync(path.join(__dirname,'kafka.pem'),'utf-8')]
+    },
+    sasl:{
+        username: " ",
+        password: " ",
+        mechanism: "plain"
+    }
+})
+
+const client =createClient({
+    host: 'https://',
+    database: '',
+    username: '',
+    password: ''
+})
+
+const consumer = kafka.consumer({groupId: 'api-server-logs-consumer'})
 
 io.on('connection', Socket => {
     Socket.on('Subscribe',channel => {
@@ -47,33 +68,32 @@ const ecsClient = new ECSClient({
 //json parsing middleware
 app.use(express.json());
 
-app.post('projects', async (req, res) => {
-    const scheme = z.object({
+app.post('/project', async (req, res) => {
+    const schema = z.object({
         name: z.string(),
         gitURL: z.string()
     })
-    const parsed = scheme.safeParse(req.body)
-    if (!parsed.success) {
-        return res.status(400).json({ error: parsed.error })
-    }else {
-        return res.json({ status: '404' },{message : 'error'})
-    }
-    const {name, gitURL} = parsed.data;
-    
-    const deployment = await prisma.project.create({
+    const safeParseResult = schema.safeParse(req.body)
+
+    if (safeParseResult.error) return res.status(400).json({ error: safeParseResult.error })
+
+    const { name, gitURL } = safeParseResult.data
+
+    const project = await prisma.project.create({
         data: {
             name,
             gitURL,
             subDomain: generateSlug()
         }
     })
-    return res.json({ status: 'success', data: {project} })
+
+    return res.json({ status: 'success', data: { project } })
 })
 
 app.post('/deploy', async (req, res) => {
     
     const {projectId}= req.body;
-    const project = await prisma.project.unique({
+    const project = await prisma.project.findUnique({
         where: {
             id: projectId
         }
@@ -122,17 +142,50 @@ app.post('/deploy', async (req, res) => {
     })
     await ecsClient.send(command);
 
-    return res.json({ status: 'queued', data: { projectSlug, url: `http://${projectSlug}.localhost:8000` } })
-
-    function initRedisSubscriber() 
-    {
-        console.log('Subscribing to Redis channel logs:*')
-        subscriber.psubscriber('logs:*')
-        subscriber.on('pmessage', (pattern, channel, message) =>
-             {
-            io.to(channel).emit('message', message)
-        })
-    }
-    initRedisSubscriber();
+    return res.json({ status: 'queued', data: { deploymentId:deployment.id }})
 })
-app.listen(port, () => {console.log(`API server listening at http://localhost:${port}`)})
+
+app.get('/logs/:id', async (req, res) => {
+    const id = req.params.id;
+    const logs = await client.query({
+        query: `SELECT event_id, deployment_id, log, timestamp from log_events where deployment_id = {deployment_id:String}`,
+        query_params: {
+            deployment_id: id
+        },
+        format: 'JSONEachRow'
+    })
+
+    const rawLogs = await logs.json()
+
+    return res.json({ logs: rawLogs })
+})    
+
+async function initkafkaConsumer() {
+    await consumer.connect()
+    await consumer.subscribe({topics: ['container-logs']})
+
+    await consumer.run({
+        autoCommit:false,
+        eachBatch: async function ({ batch, heartbeat, commitOffsetsIfNecessary, resolveOffset }) {
+            const messages = batch.messages;
+            console.log(`Recv. ${messages.length} messages..`)
+            for (const message of messages){
+                const stringMessage=message.value.toString()
+                const {PROJECT_ID,DEPLOYMENT_ID,log} = JSON.parse(stringMessage)
+                const {query_id}=await client.insert({
+                    table:'log_events',
+                    value:[{event_id:uuidv4(),deployment_id:DEPLOYMENT_ID,log}],
+                    format: 'JSONEachRow'
+                })
+                await commitOffsetsIfNecessary(message.offset)
+                resolveOffset(message.offset)
+                await heartbeat()
+            }
+        }
+    })
+    
+}
+
+initkafkaConsumer()
+
+app.listen(port, () => console.log(`API server listening at http://localhost:${port}`))
