@@ -11,29 +11,26 @@ const { createClient } = require('@clickhouse/client')
 const { Server } = require('socket.io');
 const { Kafka } = require("kafkajs")
 const { v4: uuidv4 } = require('uuid')
-const fs = require("fs")
-const path = require("path")
+
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-in-prod'
 
 const kafka = new Kafka({
     clientId: `api-server`,
-    broker: [],
-    ssl: {
-        ca: [fs.readFileSync(path.join(__dirname, 'kafka.pem'), 'utf-8')]
-    },
+    brokers: [process.env.KAFKA_BROKER],
+    ssl: true,
     sasl: {
-        username: " ",
-        password: " ",
-        mechanism: "plain"
+        mechanism: 'plain',
+        username: process.env.KAFKA_USERNAME,
+        password: process.env.KAFKA_PASSWORD,
     }
 })
 
 const clickhouse = createClient({
-    host: 'https://',
-    database: '',
-    username: '',
-    password: ''
+    host: process.env.CLICKHOUSE_HOST,
+    database: process.env.CLICKHOUSE_DB,
+    username: process.env.CLICKHOUSE_USER,
+    password: process.env.CLICKHOUSE_PASSWORD
 })
 
 const consumer = kafka.consumer({ groupId: 'api-server-logs-consumer' })
@@ -67,7 +64,7 @@ const ecsClient = new ECSClient({
 })
 
 app.use(express.json());
-app.use(cors({ origin: 'http://localhost:3000' }));
+app.use(cors({ origin: process.env.CORS_ORIGIN || '*' }));
 
 // ── Auth middleware ──────────────────────────────────────────────────────────
 function authenticateToken(req, res, next) {
@@ -224,6 +221,7 @@ async function initKafkaConsumer() {
                     values: [{ event_id: uuidv4(), deployment_id: DEPLOYMENT_ID, log }],
                     format: 'JSONEachRow'
                 })
+                io.to(DEPLOYMENT_ID).emit('message', log)
                 resolveOffset(message.offset)
                 await commitOffsetsIfNecessary()
                 await heartbeat()
@@ -232,6 +230,6 @@ async function initKafkaConsumer() {
     })
 }
 
-initKafkaConsumer()
+initKafkaConsumer().catch(err => console.error('Kafka consumer failed to start:', err))
 
 app.listen(port, () => console.log(`API server listening at http://localhost:${port}`))
