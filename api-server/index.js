@@ -184,7 +184,8 @@ app.post('/deploy', authenticateToken, async (req, res) => {
                 environment: [
                     { name: 'GIT_REPOSITORY__URL', value: project.gitURL },
                     { name: 'PROJECT_ID', value: projectId },
-                    { name: 'DEPLOYMENT_ID', value: deployment.id }
+                    { name: 'DEPLOYMENT_ID', value: deployment.id },
+                    { name: 'SUBDOMAIN', value: project.subDomain }
                 ]
             }]
         }

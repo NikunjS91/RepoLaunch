@@ -3,8 +3,7 @@ const path = require('path')
 const fs = require('fs')
 const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3')
 const mime = require('mime-types')
-const {kafka} = require("kafkajs")
-const { json } = require('stream/consumers')
+const { Kafka } = require("kafkajs")
 
 
 
@@ -22,17 +21,16 @@ const S3_BUCKET_NAME = process.env.S3_BUCKET_NAME;
 
 const PROJECT_ID = process.env.PROJECT_ID
 const DEPLOYMENT_ID = process.env.DEPLOYMENT_ID
+const SUBDOMAIN = process.env.SUBDOMAIN || PROJECT_ID
 
-const kafka =new kafka({
+const kafka = new Kafka({
     clientId: `docker-build-server-${DEPLOYMENT_ID}`,
-    broker: [], //kafka broker URl needed.
-    ssl: {
-        ca: [fs.readFileSync(path.join(__dirname,'kafka.pem'),'utf-8')]
-    },
-    sasl:{
-        username: " ",
-        password: " ",
-        mechanism: "plain"
+    brokers: [process.env.KAFKA_BROKER],
+    ssl: true,
+    sasl: {
+        mechanism: 'plain',
+        username: process.env.KAFKA_USERNAME,
+        password: process.env.KAFKA_PASSWORD,
     }
 })
 
@@ -54,7 +52,7 @@ async function init() {
 
     const p = exec(`cd ${outDirPath} && npm install && npm run build`)
 
-    p.stdout.on('data',  function (data) {
+    p.stdout.on('data', async function (data) {
         console.log(data.toString())
         await publishLog(data.toString())
     })
@@ -80,7 +78,7 @@ async function init() {
 
             const command = new PutObjectCommand({
                 Bucket: S3_BUCKET_NAME,
-                Key: `__outputs/${PROJECT_ID}/${file}`,
+                Key: `__outputs/${SUBDOMAIN}/${file}`,
                 Body: fs.createReadStream(filePath),
                 ContentType: mime.lookup(filePath)
             })
