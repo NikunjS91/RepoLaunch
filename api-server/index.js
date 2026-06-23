@@ -9,6 +9,7 @@ const { PrismaClient } = require('./generated/prisma')
 const { z } = require('zod')
 const { createClient } = require('@clickhouse/client')
 const { Server } = require('socket.io');
+const http = require('http');
 const { Kafka } = require("kafkajs")
 const { v4: uuidv4 } = require('uuid')
 
@@ -35,17 +36,17 @@ const clickhouse = createClient({
 
 const consumer = kafka.consumer({ groupId: 'api-server-logs-consumer' })
 
-const io = new Server({ cors: { origin: '*' } })
+const app = express();
+const httpServer = http.createServer(app);
+const port = process.env.PORT || 9000;
+
+const io = new Server(httpServer, { cors: { origin: process.env.CORS_ORIGIN || '*' } })
 io.on('connection', socket => {
     socket.on('Subscribe', channel => {
         socket.join(channel)
         socket.emit('message', `Subscribed to ${channel}`)
     })
 })
-io.listen(9001, () => console.log("Socket Server on 9001"))
-
-const app = express();
-const port = 9000;
 const prisma = new PrismaClient();
 
 const config = {
@@ -232,4 +233,4 @@ async function initKafkaConsumer() {
 
 initKafkaConsumer().catch(err => console.error('Kafka consumer failed to start:', err))
 
-app.listen(port, () => console.log(`API server listening at http://localhost:${port}`))
+httpServer.listen(port, () => console.log(`API server listening on port ${port}`))
