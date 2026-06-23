@@ -8,7 +8,7 @@
   "main": "index.js",
   "scripts": {
     "build": "prisma generate",
-    "start": "node index.js",
+    "start": "prisma generate && node index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
