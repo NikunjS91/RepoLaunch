@@ -10,15 +10,14 @@ app.use((req, res) => {
     const hostname = req.hostname;
     const subdomain = hostname.split('.')[0];
 
-    const resolveTo = `${BASE_PATH}/__outputs/${subdomain}`;
+    const resolveTo = `${BASE_PATH}/${subdomain}`;
     return proxy.web(req,res,{target: resolveTo, changeOrigin: true})
 });
 
 proxy.on('proxyReq', (proxyReq, req, res) => {
     const url = req.url;
     if(url ==='/') {
-        proxyReq.path += '/index.html';
-    return proxyReq;
+        proxyReq.path = proxyReq.path.replace(/\/$/, '') + '/index.html';
     }
 })
 

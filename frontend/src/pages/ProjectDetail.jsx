@@ -44,7 +44,8 @@ export default function ProjectDetail() {
     )
   }
 
-  const siteUrl = `http://${project.subDomain}.localhost:8000`
+  const proxyHost = import.meta.env.VITE_PROXY_HOST || 'localhost:8000'
+  const siteUrl = `http://${project.subDomain}.${proxyHost}`
 
   async function handleDeploy() {
     setDeploying(true)
@@ -85,7 +86,7 @@ export default function ProjectDetail() {
                 <Globe size={15} className="text-zinc-500 shrink-0" />
                 <a href={siteUrl} target="_blank" rel="noopener noreferrer"
                   className="text-accent hover:underline truncate">
-                  {project.subDomain}.localhost:8000
+                  {project.subDomain}.{proxyHost}
                 </a>
                 <ExternalLink size={12} className="text-zinc-600" />
               </div>

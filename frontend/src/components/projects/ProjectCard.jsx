@@ -22,7 +22,8 @@ export default function ProjectCard({ project, lastDeployment, onDeploy }) {
     }
   }
 
-  const siteUrl = `http://${project.subDomain}.localhost:8000`
+  const proxyHost = import.meta.env.VITE_PROXY_HOST || 'localhost:8000'
+  const siteUrl = `http://${project.subDomain}.${proxyHost}`
 
   return (
     <div className="relative group p-[1px] rounded-xl bg-gradient-to-br from-zinc-800 to-zinc-900 hover:from-emerald-500/20 hover:to-cyan-500/20 transition-all duration-300">
@@ -54,7 +55,7 @@ export default function ProjectCard({ project, lastDeployment, onDeploy }) {
           onClick={e => e.stopPropagation()}
         >
           <ExternalLink size={11} />
-          {project.subDomain}.localhost:8000
+          {project.subDomain}.{proxyHost}
         </a>
 
         {/* Actions */}
